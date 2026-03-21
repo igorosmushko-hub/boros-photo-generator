@@ -1,75 +1,94 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { GenerationTask } from "@/types";
 import { THEMES, FORMATS } from "@/lib/prompts";
 
 type Props = {
   tasks: GenerationTask[];
-  onTaskUpdate: (taskId: string, update: Partial<GenerationTask>) => void;
+  setTasks: React.Dispatch<React.SetStateAction<GenerationTask[]>>;
 };
 
-export default function ResultsGallery({ tasks, onTaskUpdate }: Props) {
-  const tasksRef = useRef(tasks);
-  tasksRef.current = tasks;
+async function checkTask(
+  task: GenerationTask
+): Promise<GenerationTask> {
+  try {
+    const res = await fetch(
+      `/api/status?taskId=${task.taskId}&engine=${task.engine}`
+    );
+    if (!res.ok) return task;
+    const data = await res.json();
 
-  const pollOnce = useCallback(async () => {
-    const current = tasksRef.current;
-    const pendingTasks = current.filter(
+    if (data.status === "completed" && data.resultUrl) {
+      return { ...task, status: "completed", resultUrl: data.resultUrl };
+    }
+    if (data.status === "failed") {
+      return { ...task, status: "failed", error: data.error };
+    }
+  } catch {
+    // network error, keep current state
+  }
+  return { ...task, status: "processing" };
+}
+
+export default function ResultsGallery({ tasks, setTasks }: Props) {
+  const [polling, setPolling] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pollAll = async () => {
+    setPolling(true);
+    const pending = tasks.filter(
       (t) =>
         (t.status === "pending" || t.status === "processing") &&
         !t.taskId.startsWith("error-")
     );
 
-    for (const task of pendingTasks) {
-      try {
-        const res = await fetch(
-          `/api/status?taskId=${task.taskId}&engine=${task.engine}`
-        );
-        if (!res.ok) continue;
-        const data = await res.json();
-
-        if (data.status === "completed" && data.resultUrl) {
-          onTaskUpdate(task.taskId, {
-            status: "completed",
-            resultUrl: data.resultUrl,
-          });
-        } else if (data.status === "failed") {
-          onTaskUpdate(task.taskId, {
-            status: "failed",
-            error: data.error,
-          });
-        }
-      } catch {
-        // network error — will retry
-      }
+    if (pending.length === 0) {
+      setPolling(false);
+      return;
     }
-  }, [onTaskUpdate]);
 
-  // Regular polling every 5 seconds
+    const updated = await Promise.all(pending.map(checkTask));
+    const updateMap = new Map(updated.map((t) => [t.taskId, t]));
+
+    setTasks((prev) =>
+      prev.map((t) => updateMap.get(t.taskId) || t)
+    );
+
+    setPolling(false);
+  };
+
+  // Auto-poll with setTimeout chain
   useEffect(() => {
     const hasPending = tasks.some(
       (t) =>
         (t.status === "pending" || t.status === "processing") &&
         !t.taskId.startsWith("error-")
     );
+
     if (!hasPending) return;
 
-    const interval = setInterval(pollOnce, 5000);
-    return () => clearInterval(interval);
-  }, [tasks, pollOnce]);
+    timeoutRef.current = setTimeout(async () => {
+      await pollAll();
+    }, 5000);
 
-  // Re-poll when tab becomes visible again (fixes ERR_NETWORK_IO_SUSPENDED)
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks]);
+
+  // Re-poll on tab focus
   useEffect(() => {
-    const handleVisibility = () => {
+    const handler = () => {
       if (document.visibilityState === "visible") {
-        pollOnce();
+        pollAll();
       }
     };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () =>
-      document.removeEventListener("visibilitychange", handleVisibility);
-  }, [pollOnce]);
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks]);
 
   if (tasks.length === 0) return null;
 
@@ -86,11 +105,20 @@ export default function ResultsGallery({ tasks, onTaskUpdate }: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Результаты</h2>
-        <div className="flex gap-3 text-sm">
+        <div className="flex items-center gap-3 text-sm">
           {pendingCount > 0 && (
-            <span className="text-yellow-600">
-              В процессе: {pendingCount}
-            </span>
+            <>
+              <span className="text-yellow-600">
+                В процессе: {pendingCount}
+              </span>
+              <button
+                onClick={pollAll}
+                disabled={polling}
+                className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {polling ? "Проверяю..." : "Обновить"}
+              </button>
+            </>
           )}
           {completedCount > 0 && (
             <span className="text-green-600">Готово: {completedCount}</span>
@@ -103,7 +131,7 @@ export default function ResultsGallery({ tasks, onTaskUpdate }: Props) {
 
       {pendingCount > 0 && (
         <p className="text-sm text-gray-400">
-          Генерация занимает 1-2 минуты. Не сворачивайте вкладку.
+          Генерация занимает 1–2 минуты. Автопроверка каждые 5 секунд.
         </p>
       )}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { upload } from "@vercel/blob/client";
 import UploadZone from "@/components/UploadZone";
 import ThemeSelector from "@/components/ThemeSelector";
@@ -90,15 +90,6 @@ export default function Home() {
     }
   };
 
-  const handleTaskUpdate = useCallback(
-    (taskId: string, update: Partial<GenerationTask>) => {
-      setTasks((prev) =>
-        prev.map((t) => (t.taskId === taskId ? { ...t, ...update } : t))
-      );
-    },
-    []
-  );
-
   const totalCombinations = selectedThemes.length * selectedFormats.length;
 
   return (
@@ -143,7 +134,7 @@ export default function Home() {
           )}
         </div>
 
-        <ResultsGallery tasks={tasks} onTaskUpdate={handleTaskUpdate} />
+        <ResultsGallery tasks={tasks} setTasks={setTasks} />
       </div>
     </main>
   );
