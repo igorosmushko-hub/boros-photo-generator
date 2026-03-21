@@ -5,6 +5,8 @@ import {
 } from "@/lib/kie-ai";
 import { THEME_PROMPTS } from "@/lib/prompts";
 
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -21,11 +23,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const tasks: Array<{
-      taskId: string;
+    // Build all generation jobs
+    const jobs: Array<{
       theme: string;
       format: string;
       engine: "gpt4o" | "flux-kontext";
+      promise: Promise<string>;
     }> = [];
 
     for (const theme of themes) {
@@ -33,37 +36,38 @@ export async function POST(req: NextRequest) {
       if (!prompt) continue;
 
       for (const format of formats) {
-        // GPT-4o supports 1:1, 3:2, 2:3. Use Flux Kontext for 9:16 and others.
         const useFlux = format === "9:16";
+        const engine: "gpt4o" | "flux-kontext" = useFlux ? "flux-kontext" : "gpt4o";
+        const promise = useFlux
+          ? generateWithFluxKontext(prompt, imageUrls[0], format)
+          : generateWithGpt4o(prompt, imageUrls, format);
 
-        try {
-          let taskId: string;
-          let engine: "gpt4o" | "flux-kontext";
-
-          if (useFlux) {
-            taskId = await generateWithFluxKontext(
-              prompt,
-              imageUrls[0],
-              format
-            );
-            engine = "flux-kontext";
-          } else {
-            taskId = await generateWithGpt4o(prompt, imageUrls, format);
-            engine = "gpt4o";
-          }
-
-          tasks.push({ taskId, theme, format, engine });
-        } catch (err) {
-          console.error(`Generation error for ${theme}/${format}:`, err);
-          tasks.push({
-            taskId: `error-${theme}-${format}`,
-            theme,
-            format,
-            engine: useFlux ? "flux-kontext" : "gpt4o",
-          });
-        }
+        jobs.push({ theme, format, engine, promise });
       }
     }
+
+    // Run all jobs in parallel
+    const results = await Promise.allSettled(jobs.map((j) => j.promise));
+
+    const tasks = jobs.map((job, i) => {
+      const result = results[i];
+      if (result.status === "fulfilled") {
+        return {
+          taskId: result.value,
+          theme: job.theme,
+          format: job.format,
+          engine: job.engine,
+        };
+      } else {
+        console.error(`Generation error for ${job.theme}/${job.format}:`, result.reason);
+        return {
+          taskId: `error-${job.theme}-${job.format}`,
+          theme: job.theme,
+          format: job.format,
+          engine: job.engine,
+        };
+      }
+    });
 
     return NextResponse.json({ tasks });
   } catch (err) {

@@ -81,7 +81,8 @@ export default function Home() {
     } catch (err) {
       console.error("Generation error:", err);
       setUploadProgress("");
-      alert("Произошла ошибка при генерации. Попробуйте ещё раз.");
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Ошибка: ${message}`);
     } finally {
       setIsGenerating(false);
       setUploadProgress("");
