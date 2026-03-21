@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import type { GenerationTask } from "@/types";
 import { THEMES, FORMATS } from "@/lib/prompts";
 
@@ -10,48 +10,66 @@ type Props = {
 };
 
 export default function ResultsGallery({ tasks, onTaskUpdate }: Props) {
-  const pollingRef = useRef<Set<string>>(new Set());
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
 
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const pendingTasks = tasks.filter(
-        (t) =>
-          (t.status === "pending" || t.status === "processing") &&
-          !t.taskId.startsWith("error-") &&
-          !pollingRef.current.has(t.taskId)
-      );
+  const pollOnce = useCallback(async () => {
+    const current = tasksRef.current;
+    const pendingTasks = current.filter(
+      (t) =>
+        (t.status === "pending" || t.status === "processing") &&
+        !t.taskId.startsWith("error-")
+    );
 
-      for (const task of pendingTasks) {
-        pollingRef.current.add(task.taskId);
-        try {
-          const res = await fetch(
-            `/api/status?taskId=${task.taskId}&engine=${task.engine}`
-          );
-          const data = await res.json();
+    for (const task of pendingTasks) {
+      try {
+        const res = await fetch(
+          `/api/status?taskId=${task.taskId}&engine=${task.engine}`
+        );
+        if (!res.ok) continue;
+        const data = await res.json();
 
-          if (data.status === "completed" && data.resultUrl) {
-            onTaskUpdate(task.taskId, {
-              status: "completed",
-              resultUrl: data.resultUrl,
-            });
-          } else if (data.status === "failed") {
-            onTaskUpdate(task.taskId, {
-              status: "failed",
-              error: data.error,
-            });
-          } else {
-            onTaskUpdate(task.taskId, { status: "processing" });
-          }
-        } catch {
-          // will retry next interval
-        } finally {
-          pollingRef.current.delete(task.taskId);
+        if (data.status === "completed" && data.resultUrl) {
+          onTaskUpdate(task.taskId, {
+            status: "completed",
+            resultUrl: data.resultUrl,
+          });
+        } else if (data.status === "failed") {
+          onTaskUpdate(task.taskId, {
+            status: "failed",
+            error: data.error,
+          });
         }
+      } catch {
+        // network error — will retry
       }
-    }, 3000);
+    }
+  }, [onTaskUpdate]);
 
+  // Regular polling every 5 seconds
+  useEffect(() => {
+    const hasPending = tasks.some(
+      (t) =>
+        (t.status === "pending" || t.status === "processing") &&
+        !t.taskId.startsWith("error-")
+    );
+    if (!hasPending) return;
+
+    const interval = setInterval(pollOnce, 5000);
     return () => clearInterval(interval);
-  }, [tasks, onTaskUpdate]);
+  }, [tasks, pollOnce]);
+
+  // Re-poll when tab becomes visible again (fixes ERR_NETWORK_IO_SUSPENDED)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        pollOnce();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibility);
+  }, [pollOnce]);
 
   if (tasks.length === 0) return null;
 
@@ -83,6 +101,12 @@ export default function ResultsGallery({ tasks, onTaskUpdate }: Props) {
         </div>
       </div>
 
+      {pendingCount > 0 && (
+        <p className="text-sm text-gray-400">
+          Генерация занимает 1-2 минуты. Не сворачивайте вкладку.
+        </p>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {tasks.map((task) => (
           <div
@@ -98,7 +122,7 @@ export default function ResultsGallery({ tasks, onTaskUpdate }: Props) {
                 />
               ) : task.status === "failed" ? (
                 <div className="text-center p-4">
-                  <div className="text-3xl mb-2">❌</div>
+                  <div className="text-3xl mb-2">&#10060;</div>
                   <p className="text-sm text-red-500">
                     {task.error || "Ошибка генерации"}
                   </p>
