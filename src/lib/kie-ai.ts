@@ -83,18 +83,19 @@ export async function checkGpt4oStatus(
 
   const data = await res.json();
   const record = data.data || data;
+  const st = (record.status || "").toUpperCase();
 
-  if (record.status === "completed" || record.status === "success") {
+  if (st === "SUCCESS" || st === "COMPLETED") {
     const url =
+      record.response?.resultUrls?.[0] ||
       record.response?.data?.[0]?.url ||
       record.resultUrl ||
-      record.output?.url ||
       record.imageUrl;
     return { status: "completed", resultUrl: url };
   }
 
-  if (record.status === "failed" || record.status === "error") {
-    return { status: "failed", error: record.error || "Generation failed" };
+  if (st === "FAILED" || st === "ERROR") {
+    return { status: "failed", error: record.errorMessage || record.error || "Generation failed" };
   }
 
   return { status: "processing" };
@@ -114,18 +115,19 @@ export async function checkFluxKontextStatus(
 
   const data = await res.json();
   const record = data.data || data;
+  const st = (record.status || "").toUpperCase();
 
-  if (record.status === "completed" || record.status === "success") {
+  if (st === "SUCCESS" || st === "COMPLETED") {
     const url =
+      record.response?.resultUrls?.[0] ||
       record.resultUrl ||
-      record.output?.url ||
       record.imageUrl ||
       record.response?.url;
     return { status: "completed", resultUrl: url };
   }
 
-  if (record.status === "failed" || record.status === "error") {
-    return { status: "failed", error: record.error || "Generation failed" };
+  if (st === "FAILED" || st === "ERROR") {
+    return { status: "failed", error: record.errorMessage || record.error || "Generation failed" };
   }
 
   return { status: "processing" };
