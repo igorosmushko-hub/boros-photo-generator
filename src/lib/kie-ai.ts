@@ -84,8 +84,9 @@ export async function checkGpt4oStatus(
   const data = await res.json();
   const record = data.data || data;
   const st = (record.status || "").toUpperCase();
+  const flag = record.successFlag;
 
-  if (st === "SUCCESS" || st === "COMPLETED") {
+  if (st === "SUCCESS" || st === "COMPLETED" || flag === 1) {
     const url =
       record.response?.resultUrls?.[0] ||
       record.response?.data?.[0]?.url ||
@@ -94,7 +95,7 @@ export async function checkGpt4oStatus(
     return { status: "completed", resultUrl: url };
   }
 
-  if (st === "FAILED" || st === "ERROR") {
+  if (st === "FAILED" || st === "ERROR" || flag === 3 || record.errorCode) {
     return { status: "failed", error: record.errorMessage || record.error || "Generation failed" };
   }
 
@@ -115,18 +116,22 @@ export async function checkFluxKontextStatus(
 
   const data = await res.json();
   const record = data.data || data;
-  const st = (record.status || "").toUpperCase();
 
-  if (st === "SUCCESS" || st === "COMPLETED") {
+  // Flux Kontext uses successFlag (1=success, 3=failed) instead of status
+  const st = (record.status || "").toUpperCase();
+  const flag = record.successFlag;
+
+  if (st === "SUCCESS" || st === "COMPLETED" || flag === 1) {
     const url =
       record.response?.resultUrls?.[0] ||
+      record.response?.result?.sample ||
       record.resultUrl ||
       record.imageUrl ||
       record.response?.url;
     return { status: "completed", resultUrl: url };
   }
 
-  if (st === "FAILED" || st === "ERROR") {
+  if (st === "FAILED" || st === "ERROR" || flag === 3 || record.errorCode) {
     return { status: "failed", error: record.errorMessage || record.error || "Generation failed" };
   }
 
