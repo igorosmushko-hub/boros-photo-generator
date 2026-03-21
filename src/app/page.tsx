@@ -39,7 +39,8 @@ export default function Home() {
       });
 
       if (!uploadRes.ok) {
-        throw new Error("Failed to upload files");
+        const errBody = await uploadRes.json().catch(() => ({}));
+        throw new Error(errBody.error || `Upload failed (${uploadRes.status})`);
       }
 
       const { urls } = await uploadRes.json();
@@ -57,7 +58,8 @@ export default function Home() {
       });
 
       if (!genRes.ok) {
-        throw new Error("Failed to start generation");
+        const errBody = await genRes.json().catch(() => ({}));
+        throw new Error(errBody.error || `Generation failed (${genRes.status})`);
       }
 
       const { tasks: newTasks } = await genRes.json();
