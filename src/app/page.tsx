@@ -44,18 +44,13 @@ export default function Home() {
 
       const { urls } = await uploadRes.json();
 
-      // Convert relative URLs to absolute for the AI API
-      const absoluteUrls = urls.map(
-        (u: string) => `${window.location.origin}${u}`
-      );
-
-      // Step 2: Send generation request
+      // Step 2: Send generation request (URLs from Vercel Blob are already public)
       setUploadProgress("Запуск генерации...");
       const genRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageUrls: absoluteUrls,
+          imageUrls: urls,
           themes: selectedThemes,
           formats: selectedFormats,
         }),
