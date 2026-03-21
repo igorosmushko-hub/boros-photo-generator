@@ -10,6 +10,7 @@ export async function POST(req: NextRequest) {
       request: req,
       onBeforeGenerateToken: async () => {
         return {
+          addRandomSuffix: true,
           allowedContentTypes: [
             "image/jpeg",
             "image/png",
