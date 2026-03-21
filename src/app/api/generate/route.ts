@@ -36,13 +36,12 @@ export async function POST(req: NextRequest) {
       if (!prompt) continue;
 
       for (const format of formats) {
-        const useFlux = format === "9:16";
-        const engine: "gpt4o" | "flux-kontext" = useFlux ? "flux-kontext" : "gpt4o";
-        const promise = useFlux
-          ? generateWithFluxKontext(prompt, imageUrls[0], format)
-          : generateWithGpt4o(prompt, imageUrls, format);
+        // Map all formats to GPT-4o supported sizes
+        // 9:16 -> use 2:3 (closest vertical format GPT-4o supports)
+        const gpt4oSize = format === "9:16" ? "2:3" : format;
+        const promise = generateWithGpt4o(prompt, imageUrls, gpt4oSize);
 
-        jobs.push({ theme, format, engine, promise });
+        jobs.push({ theme, format, engine: "gpt4o", promise });
       }
     }
 
