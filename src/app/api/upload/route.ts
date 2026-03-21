@@ -1,38 +1,31 @@
+import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { NextRequest, NextResponse } from "next/server";
-import { put } from "@vercel/blob";
-import { randomUUID } from "crypto";
-
-export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  const body = (await req.json()) as HandleUploadBody;
+
   try {
-    const formData = await req.formData();
-    const files = formData.getAll("files") as File[];
+    const jsonResponse = await handleUpload({
+      body,
+      request: req,
+      onBeforeGenerateToken: async () => {
+        return {
+          allowedContentTypes: [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+          ],
+          maximumSizeInBytes: 10 * 1024 * 1024,
+        };
+      },
+      onUploadCompleted: async () => {
+        // no-op
+      },
+    });
 
-    if (!files.length) {
-      return NextResponse.json({ error: "No files provided" }, { status: 400 });
-    }
-
-    const urls: string[] = [];
-
-    for (const file of files) {
-      const ext = file.name.split(".").pop() || "jpg";
-      const filename = `shoes/${randomUUID()}.${ext}`;
-
-      const blob = await put(filename, file, {
-        access: "public",
-      });
-
-      urls.push(blob.url);
-    }
-
-    return NextResponse.json({ urls });
+    return NextResponse.json(jsonResponse);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("Upload error:", message);
-    return NextResponse.json(
-      { error: `Upload failed: ${message}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }

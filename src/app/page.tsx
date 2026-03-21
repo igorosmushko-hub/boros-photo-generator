@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { upload } from "@vercel/blob/client";
 import UploadZone from "@/components/UploadZone";
 import ThemeSelector from "@/components/ThemeSelector";
 import FormatSelector from "@/components/FormatSelector";
@@ -26,26 +27,24 @@ export default function Home() {
     setTasks([]);
 
     try {
-      // Step 1: Upload files to get URLs
+      // Step 1: Upload files directly to Vercel Blob from browser
       setUploadProgress("Загрузка фотографий...");
-      const formData = new FormData();
-      for (const f of files) {
-        formData.append("files", f.file);
+      const urls: string[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        setUploadProgress(`Загрузка фото ${i + 1} из ${files.length}...`);
+        const blob = await upload(
+          `shoes/${files[i].file.name}`,
+          files[i].file,
+          {
+            access: "public",
+            handleUploadUrl: "/api/upload",
+          }
+        );
+        urls.push(blob.url);
       }
 
-      const uploadRes = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!uploadRes.ok) {
-        const errBody = await uploadRes.json().catch(() => ({}));
-        throw new Error(errBody.error || `Upload failed (${uploadRes.status})`);
-      }
-
-      const { urls } = await uploadRes.json();
-
-      // Step 2: Send generation request (URLs from Vercel Blob are already public)
+      // Step 2: Send generation request
       setUploadProgress("Запуск генерации...");
       const genRes = await fetch("/api/generate", {
         method: "POST",
