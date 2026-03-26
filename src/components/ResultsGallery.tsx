@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { GenerationTask } from "@/types";
 import { THEMES, FORMATS } from "@/lib/prompts";
+import { processImageOnClient, downloadDataUrl } from "@/lib/image-overlay";
 
 type Props = {
   tasks: GenerationTask[];
@@ -30,22 +31,6 @@ async function checkTask(
     // network error, keep current state
   }
   return { ...task, status: "processing" };
-}
-
-async function processImage(
-  resultUrl: string,
-  text?: string
-): Promise<string | null> {
-  try {
-    const params = new URLSearchParams({ url: resultUrl });
-    if (text?.trim()) params.set("text", text.trim());
-    const res = await fetch(`/api/process-image?${params}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.url || null;
-  } catch {
-    return null;
-  }
 }
 
 export default function ResultsGallery({ tasks, setTasks, overlayText }: Props) {
@@ -96,7 +81,7 @@ export default function ResultsGallery({ tasks, setTasks, overlayText }: Props) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks]);
 
-  // Auto-process completed tasks (watermark)
+  // Auto-process completed tasks (watermark only, client-side)
   useEffect(() => {
     const needsProcessing = tasks.filter(
       (t) =>
@@ -115,13 +100,17 @@ export default function ResultsGallery({ tasks, setTasks, overlayText }: Props) 
     });
 
     needsProcessing.forEach(async (task) => {
-      const processed = await processImage(task.resultUrl!);
-      if (processed) {
+      try {
+        const dataUrl = await processImageOnClient(task.resultUrl!, {
+          withWatermark: true,
+        });
         setTasks((prev) =>
           prev.map((t) =>
-            t.taskId === task.taskId ? { ...t, processedUrl: processed } : t
+            t.taskId === task.taskId ? { ...t, processedUrl: dataUrl } : t
           )
         );
+      } catch (err) {
+        console.error("Watermark processing failed:", err);
       }
       setProcessing((prev) => {
         const next = new Set(prev);
@@ -133,15 +122,34 @@ export default function ResultsGallery({ tasks, setTasks, overlayText }: Props) 
   }, [tasks]);
 
   const handleDownloadWithText = async (task: GenerationTask) => {
-    if (!task.resultUrl || !overlayText?.trim()) return;
-    setProcessing((prev) => new Set(prev).add(task.taskId + "-text"));
-    const url = await processImage(task.resultUrl, overlayText);
+    if (!task.resultUrl) return;
+    const key = task.taskId + "-text";
+    setProcessing((prev) => new Set(prev).add(key));
+    try {
+      const dataUrl = await processImageOnClient(task.resultUrl, {
+        text: overlayText,
+        withWatermark: true,
+      });
+      const filename = `boros-${task.theme}-${task.format.replace(":", "x")}-text.png`;
+      downloadDataUrl(dataUrl, filename);
+    } catch (err) {
+      console.error("Text overlay failed:", err);
+      alert("Не удалось наложить текст. Попробуйте ещё раз.");
+    }
     setProcessing((prev) => {
       const next = new Set(prev);
-      next.delete(task.taskId + "-text");
+      next.delete(key);
       return next;
     });
-    if (url) {
+  };
+
+  const handleDownload = (task: GenerationTask) => {
+    const url = task.processedUrl || task.resultUrl;
+    if (!url) return;
+    const filename = `boros-${task.theme}-${task.format.replace(":", "x")}.png`;
+    if (url.startsWith("data:")) {
+      downloadDataUrl(url, filename);
+    } else {
       window.open(url, "_blank");
     }
   };
@@ -242,15 +250,12 @@ export default function ResultsGallery({ tasks, setTasks, overlayText }: Props) 
               </div>
               {task.status === "completed" && task.resultUrl && (
                 <div className="flex items-center gap-2">
-                  <a
-                    href={task.processedUrl || task.resultUrl}
-                    download
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => handleDownload(task)}
                     className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                   >
                     Скачать
-                  </a>
+                  </button>
                   {overlayText?.trim() && (
                     <button
                       onClick={() => handleDownloadWithText(task)}
@@ -258,7 +263,7 @@ export default function ResultsGallery({ tasks, setTasks, overlayText }: Props) 
                       className="text-sm text-purple-600 hover:text-purple-700 font-medium disabled:opacity-50"
                     >
                       {processing.has(task.taskId + "-text")
-                        ? "..."
+                        ? "Обработка..."
                         : "+ текст"}
                     </button>
                   )}
