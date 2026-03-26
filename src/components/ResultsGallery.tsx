@@ -41,8 +41,6 @@ async function processImage(
     if (text?.trim()) params.set("text", text.trim());
     const res = await fetch(`/api/process-image?${params}`);
     if (!res.ok) return null;
-    // Handle redirect (no processing needed)
-    if (res.redirected) return resultUrl;
     const data = await res.json();
     return data.url || null;
   } catch {

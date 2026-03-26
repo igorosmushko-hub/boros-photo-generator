@@ -1,16 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { put } from "@vercel/blob";
-import { existsSync, readFileSync } from "fs";
-import path from "path";
 
 export const maxDuration = 30;
 
-// Load logo once at module level
-let logoBuffer: Buffer | null = null;
-const logoPath = path.join(process.cwd(), "public", "logo.png");
-if (existsSync(logoPath)) {
-  logoBuffer = readFileSync(logoPath);
+// Cache logo buffer after first fetch
+let logoCache: Buffer | null | "not-found" = null;
+
+async function getLogoBuffer(origin: string): Promise<Buffer | null> {
+  if (logoCache === "not-found") return null;
+  if (logoCache instanceof Buffer) return logoCache;
+
+  try {
+    const res = await fetch(`${origin}/logo.png`);
+    if (!res.ok) {
+      logoCache = "not-found";
+      return null;
+    }
+    logoCache = Buffer.from(await res.arrayBuffer());
+    return logoCache;
+  } catch {
+    logoCache = "not-found";
+    return null;
+  }
 }
 
 function escapeXml(str: string): string {
@@ -31,6 +43,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // Fetch logo via HTTP (works on Vercel where public/ isn't on filesystem)
+    const origin = req.nextUrl.origin;
+    const logoBuffer = await getLogoBuffer(origin);
+
+    // If nothing to process, return original URL directly
+    if (!logoBuffer && !text.trim()) {
+      return NextResponse.json({ url });
+    }
+
     // Fetch original image
     const imgRes = await fetch(url);
     if (!imgRes.ok) {
@@ -38,7 +59,7 @@ export async function GET(req: NextRequest) {
     }
 
     const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
-    let image = sharp(imgBuffer);
+    const image = sharp(imgBuffer);
     const metadata = await image.metadata();
     const width = metadata.width || 1024;
     const height = metadata.height || 1024;
@@ -50,8 +71,6 @@ export async function GET(req: NextRequest) {
       const logoSize = Math.round(width * 0.15);
       const margin = Math.round(width * 0.03);
 
-      // Remove near-white background: extract grayscale, threshold to create mask,
-      // then use mask as alpha channel
       const logoSharp = sharp(logoBuffer).resize(logoSize, logoSize, { fit: "inside" });
       const { data: rawData, info: rawInfo } = await logoSharp
         .ensureAlpha()
@@ -62,9 +81,8 @@ export async function GET(req: NextRequest) {
       const pixels = Buffer.from(rawData);
       for (let i = 0; i < pixels.length; i += 4) {
         const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
-        // If pixel is very light (background), make it transparent
         if (r > 200 && g > 200 && b > 200) {
-          pixels[i + 3] = 0; // fully transparent
+          pixels[i + 3] = 0;
         }
       }
 
@@ -110,11 +128,6 @@ export async function GET(req: NextRequest) {
         top: 0,
         left: 0,
       });
-    }
-
-    if (composites.length === 0) {
-      // Nothing to overlay, redirect to original
-      return NextResponse.redirect(url);
     }
 
     const resultBuffer = await image.composite(composites).png().toBuffer();
