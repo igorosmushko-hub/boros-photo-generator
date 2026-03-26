@@ -81,79 +81,6 @@ export default function ResultsGallery({ tasks, setTasks, overlayText }: Props) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks]);
 
-  // Auto-process completed tasks (watermark only, client-side)
-  useEffect(() => {
-    const needsProcessing = tasks.filter(
-      (t) =>
-        t.status === "completed" &&
-        t.resultUrl &&
-        !t.processedUrl &&
-        !processing.has(t.taskId)
-    );
-
-    if (needsProcessing.length === 0) return;
-
-    setProcessing((prev) => {
-      const next = new Set(prev);
-      needsProcessing.forEach((t) => next.add(t.taskId));
-      return next;
-    });
-
-    needsProcessing.forEach(async (task) => {
-      try {
-        const dataUrl = await processImageOnClient(task.resultUrl!, {
-          withWatermark: true,
-        });
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.taskId === task.taskId ? { ...t, processedUrl: dataUrl } : t
-          )
-        );
-      } catch (err) {
-        console.error("Watermark processing failed:", err);
-      }
-      setProcessing((prev) => {
-        const next = new Set(prev);
-        next.delete(task.taskId);
-        return next;
-      });
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks]);
-
-  const handleDownloadWithText = async (task: GenerationTask) => {
-    if (!task.resultUrl) return;
-    const key = task.taskId + "-text";
-    setProcessing((prev) => new Set(prev).add(key));
-    try {
-      const dataUrl = await processImageOnClient(task.resultUrl, {
-        text: overlayText,
-        withWatermark: true,
-      });
-      const filename = `boros-${task.theme}-${task.format.replace(":", "x")}-text.png`;
-      downloadDataUrl(dataUrl, filename);
-    } catch (err) {
-      console.error("Text overlay failed:", err);
-      alert("Не удалось наложить текст. Попробуйте ещё раз.");
-    }
-    setProcessing((prev) => {
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-  };
-
-  const handleDownload = (task: GenerationTask) => {
-    const url = task.processedUrl || task.resultUrl;
-    if (!url) return;
-    const filename = `boros-${task.theme}-${task.format.replace(":", "x")}.png`;
-    if (url.startsWith("data:")) {
-      downloadDataUrl(url, filename);
-    } else {
-      window.open(url, "_blank");
-    }
-  };
-
   // Re-poll on tab focus
   useEffect(() => {
     const handler = () => {
@@ -166,6 +93,34 @@ export default function ResultsGallery({ tasks, setTasks, overlayText }: Props) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks]);
 
+  const handleProcessAndDownload = async (task: GenerationTask) => {
+    if (!task.resultUrl) return;
+    const key = task.taskId + "-dl";
+    setProcessing((prev) => new Set(prev).add(key));
+    try {
+      const dataUrl = await processImageOnClient(task.resultUrl, {
+        text: overlayText?.trim() || undefined,
+        withWatermark: true,
+      });
+      const filename = `boros-${task.theme}-${task.format.replace(":", "x")}${overlayText?.trim() ? "-text" : ""}.png`;
+      downloadDataUrl(dataUrl, filename);
+    } catch (err) {
+      console.error("Image processing failed:", err);
+      alert("Ошибка обработки изображения. Попробуйте ещё раз.");
+    }
+    setProcessing((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const handleDownloadOriginal = (task: GenerationTask) => {
+    if (task.resultUrl) {
+      window.open(task.resultUrl, "_blank");
+    }
+  };
+
   if (tasks.length === 0) return null;
 
   const getThemeLabel = (id: string) =>
@@ -176,6 +131,8 @@ export default function ResultsGallery({ tasks, setTasks, overlayText }: Props) 
   const completedCount = tasks.filter((t) => t.status === "completed").length;
   const failedCount = tasks.filter((t) => t.status === "failed").length;
   const pendingCount = tasks.length - completedCount - failedCount;
+
+  const hasText = !!overlayText?.trim();
 
   return (
     <div className="space-y-4">
@@ -212,66 +169,77 @@ export default function ResultsGallery({ tasks, setTasks, overlayText }: Props) 
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {tasks.map((task) => (
-          <div
-            key={task.taskId}
-            className="rounded-xl border border-gray-200 overflow-hidden"
-          >
-            <div className="aspect-square bg-gray-100 relative flex items-center justify-center">
-              {task.status === "completed" && task.resultUrl ? (
-                <img
-                  src={task.processedUrl || task.resultUrl}
-                  alt={`${getThemeLabel(task.theme)} ${getFormatLabel(task.format)}`}
-                  className="w-full h-full object-cover"
-                />
-              ) : task.status === "failed" ? (
-                <div className="text-center p-4">
-                  <div className="text-3xl mb-2">&#10060;</div>
-                  <p className="text-sm text-red-500">
-                    {task.error || "Ошибка генерации"}
-                  </p>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">Генерация...</p>
-                </div>
-              )}
-            </div>
+        {tasks.map((task) => {
+          const isProcessing = processing.has(task.taskId + "-dl");
 
-            <div className="p-3 flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium">
-                  {getThemeLabel(task.theme)}
-                </div>
-                <div className="text-xs text-gray-500">
-                  {getFormatLabel(task.format)} ({task.format})
-                </div>
+          return (
+            <div
+              key={task.taskId}
+              className="rounded-xl border border-gray-200 overflow-hidden"
+            >
+              <div className="aspect-square bg-gray-100 relative flex items-center justify-center">
+                {task.status === "completed" && task.resultUrl ? (
+                  <img
+                    src={task.resultUrl}
+                    alt={`${getThemeLabel(task.theme)} ${getFormatLabel(task.format)}`}
+                    className="w-full h-full object-cover"
+                  />
+                ) : task.status === "failed" ? (
+                  <div className="text-center p-4">
+                    <div className="text-3xl mb-2">&#10060;</div>
+                    <p className="text-sm text-red-500">
+                      {task.error || "Ошибка генерации"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">Генерация...</p>
+                  </div>
+                )}
               </div>
-              {task.status === "completed" && task.resultUrl && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleDownload(task)}
-                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                  >
-                    Скачать
-                  </button>
-                  {overlayText?.trim() && (
+
+              <div className="p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium">
+                      {getThemeLabel(task.theme)}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {getFormatLabel(task.format)} ({task.format})
+                    </div>
+                  </div>
+                  {task.status === "completed" && task.resultUrl && (
                     <button
-                      onClick={() => handleDownloadWithText(task)}
-                      disabled={processing.has(task.taskId + "-text")}
-                      className="text-sm text-purple-600 hover:text-purple-700 font-medium disabled:opacity-50"
+                      onClick={() => handleDownloadOriginal(task)}
+                      className="text-xs text-gray-400 hover:text-gray-600"
                     >
-                      {processing.has(task.taskId + "-text")
-                        ? "Обработка..."
-                        : "+ текст"}
+                      Оригинал
                     </button>
                   )}
                 </div>
-              )}
+
+                {task.status === "completed" && task.resultUrl && (
+                  <button
+                    onClick={() => handleProcessAndDownload(task)}
+                    disabled={isProcessing}
+                    className={`w-full py-2.5 rounded-lg font-semibold text-white text-sm transition-all ${
+                      isProcessing
+                        ? "bg-purple-300 cursor-wait"
+                        : "bg-purple-600 hover:bg-purple-700 shadow hover:shadow-md active:scale-[0.98]"
+                    }`}
+                  >
+                    {isProcessing
+                      ? "Обработка..."
+                      : hasText
+                        ? "Скачать с текстом и логотипом"
+                        : "Скачать с логотипом"}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

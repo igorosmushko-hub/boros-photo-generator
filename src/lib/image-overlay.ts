@@ -1,16 +1,14 @@
 /**
  * Client-side image processing: watermark + text overlay via Canvas API.
- * Avoids serverless timeouts and Vercel Hobby plan limits.
  */
 
 let logoImageCache: HTMLImageElement | null | "failed" = null;
 
-function loadImage(src: string, crossOrigin?: string): Promise<HTMLImageElement> {
+function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    if (crossOrigin) img.crossOrigin = crossOrigin;
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+    img.onerror = () => reject(new Error(`Failed to load: ${src}`));
     img.src = src;
   });
 }
@@ -29,21 +27,22 @@ async function getLogoImage(): Promise<HTMLImageElement | null> {
   }
 }
 
+/**
+ * Loads an external image through our proxy to avoid CORS issues.
+ */
+async function loadExternalImage(imageUrl: string): Promise<HTMLImageElement> {
+  // Always use proxy — kie.ai CDN doesn't set CORS headers
+  const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+  return loadImage(proxyUrl);
+}
+
 export async function processImageOnClient(
   imageUrl: string,
   options: { text?: string; withWatermark?: boolean }
 ): Promise<string> {
   const { text, withWatermark = true } = options;
 
-  // Load the main image — try with CORS first, fallback to proxy
-  let mainImg: HTMLImageElement;
-  try {
-    mainImg = await loadImage(imageUrl, "anonymous");
-  } catch {
-    // CORS blocked — use our proxy endpoint
-    const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
-    mainImg = await loadImage(proxyUrl);
-  }
+  const mainImg = await loadExternalImage(imageUrl);
 
   const canvas = document.createElement("canvas");
   canvas.width = mainImg.naturalWidth;
