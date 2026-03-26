@@ -1,34 +1,18 @@
 export const THEME_PROMPTS: Record<string, string> = {
-  "high-quality": `Professional high-end product photography of a person wearing these exact shoes.
-Clean neutral background, soft studio lighting, sharp focus on the shoes.
-The shoes must look exactly as in the reference images — preserve every detail, color, texture, and stitching.
-Model's feet and lower legs visible, natural relaxed pose.
-Magazine-quality commercial photography, 8K resolution feel.`,
+  "high-quality": `Photo of a person wearing EXACTLY these shoes. The shoes MUST be identical to the reference — same shape, color, material, stitching, sole, every detail preserved with zero modifications. DO NOT alter, stylize, or reinterpret the shoes in any way.
+Clean light gray background. Soft even lighting. Camera focused on feet and lower legs. Simple natural standing pose.`,
 
-  business: `Professional business lifestyle photograph of a person wearing these exact shoes in a corporate setting.
-Modern office environment or elegant meeting room. The person is dressed in business attire.
-Focus on the shoes with the business environment providing context.
-Preserve every detail of the shoes exactly as shown in the reference — color, texture, materials, stitching.
-Natural lighting, warm tones, editorial quality.`,
+  business: `Photo of a person in business attire wearing EXACTLY these shoes. The shoes MUST be identical to the reference — same shape, color, material, stitching, sole, every detail preserved with zero modifications. DO NOT alter, stylize, or reinterpret the shoes in any way.
+Modern office setting. Natural warm lighting. The shoes are the main subject of the photo.`,
 
-  casual: `Lifestyle street photography of a person wearing these exact shoes during a walk.
-Urban environment — city streets, park pathway, or cafe terrace. Casual relaxed outfit.
-Natural daylight, candid feel but well-composed.
-The shoes must match the reference images exactly — same color, texture, materials, and design details.
-Warm, inviting atmosphere, Instagram-ready aesthetic.`,
+  casual: `Photo of a person casually walking outdoors wearing EXACTLY these shoes. The shoes MUST be identical to the reference — same shape, color, material, stitching, sole, every detail preserved with zero modifications. DO NOT alter, stylize, or reinterpret the shoes in any way.
+City street or park. Natural daylight. Relaxed candid feel. Shoes in sharp focus.`,
 
-  studio: `High-fashion studio photograph of a model wearing these exact shoes.
-Professional photography studio setup with dramatic lighting — rim light, soft key light.
-Model in a confident pose, full or three-quarter view showing the shoes prominently.
-The shoes must be identical to the reference images — exact color, materials, textures preserved.
-Fashion magazine editorial quality, Vogue-style composition.`,
+  studio: `Studio fashion photo of a model wearing EXACTLY these shoes. The shoes MUST be identical to the reference — same shape, color, material, stitching, sole, every detail preserved with zero modifications. DO NOT alter, stylize, or reinterpret the shoes in any way.
+Professional studio lighting with rim light. Dark or gradient background. Dramatic but clean look. Shoes prominently visible.`,
 
-  "full-look": `Full outfit lifestyle photograph featuring these exact shoes as the key accessory.
-Complete stylish outfit visible from head to toe, with the shoes being the focal point.
-Complementary clothing that enhances the shoes' style.
-Environment matches the shoe style — could be urban, nature, or interior.
-The shoes must exactly match the reference — every detail, color, texture preserved.
-Fashion lookbook quality, Instagram influencer aesthetic.`,
+  "full-look": `Full body outfit photo featuring EXACTLY these shoes. The shoes MUST be identical to the reference — same shape, color, material, stitching, sole, every detail preserved with zero modifications. DO NOT alter, stylize, or reinterpret the shoes in any way.
+Stylish complementary outfit. Head to toe visible. The shoes are the focal point and hero of the image.`,
 };
 
 export const THEMES = [

@@ -13,6 +13,7 @@ export default function Home() {
   const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
   const [selectedFormats, setSelectedFormats] = useState<string[]>([]);
   const [tasks, setTasks] = useState<GenerationTask[]>([]);
+  const [overlayText, setOverlayText] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
 
@@ -111,6 +112,23 @@ export default function Home() {
           onChange={setSelectedFormats}
         />
 
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Текст на фото (опционально)
+          </label>
+          <input
+            type="text"
+            value={overlayText}
+            onChange={(e) => setOverlayText(e.target.value)}
+            placeholder="Например: BOROS — обувь ручной работы"
+            className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            maxLength={100}
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            Текст будет наложен на готовые фотографии
+          </p>
+        </div>
+
         <div className="flex items-center gap-4">
           <button
             onClick={handleGenerate}
@@ -134,7 +152,7 @@ export default function Home() {
           )}
         </div>
 
-        <ResultsGallery tasks={tasks} setTasks={setTasks} />
+        <ResultsGallery tasks={tasks} setTasks={setTasks} overlayText={overlayText} />
       </div>
     </main>
   );

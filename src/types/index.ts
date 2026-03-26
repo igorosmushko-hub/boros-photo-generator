@@ -24,6 +24,7 @@ export type GenerationTask = {
   engine: "gpt4o" | "flux-kontext";
   status: "pending" | "processing" | "completed" | "failed";
   resultUrl?: string;
+  processedUrl?: string;
   error?: string;
 };
 

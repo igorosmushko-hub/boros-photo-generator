@@ -7,6 +7,7 @@ import { THEMES, FORMATS } from "@/lib/prompts";
 type Props = {
   tasks: GenerationTask[];
   setTasks: React.Dispatch<React.SetStateAction<GenerationTask[]>>;
+  overlayText?: string;
 };
 
 async function checkTask(
@@ -31,8 +32,27 @@ async function checkTask(
   return { ...task, status: "processing" };
 }
 
-export default function ResultsGallery({ tasks, setTasks }: Props) {
+async function processImage(
+  resultUrl: string,
+  text?: string
+): Promise<string | null> {
+  try {
+    const params = new URLSearchParams({ url: resultUrl });
+    if (text?.trim()) params.set("text", text.trim());
+    const res = await fetch(`/api/process-image?${params}`);
+    if (!res.ok) return null;
+    // Handle redirect (no processing needed)
+    if (res.redirected) return resultUrl;
+    const data = await res.json();
+    return data.url || null;
+  } catch {
+    return null;
+  }
+}
+
+export default function ResultsGallery({ tasks, setTasks, overlayText }: Props) {
   const [polling, setPolling] = useState(false);
+  const [processing, setProcessing] = useState<Set<string>>(new Set());
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pollAll = async () => {
@@ -77,6 +97,56 @@ export default function ResultsGallery({ tasks, setTasks }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks]);
+
+  // Auto-process completed tasks (watermark)
+  useEffect(() => {
+    const needsProcessing = tasks.filter(
+      (t) =>
+        t.status === "completed" &&
+        t.resultUrl &&
+        !t.processedUrl &&
+        !processing.has(t.taskId)
+    );
+
+    if (needsProcessing.length === 0) return;
+
+    setProcessing((prev) => {
+      const next = new Set(prev);
+      needsProcessing.forEach((t) => next.add(t.taskId));
+      return next;
+    });
+
+    needsProcessing.forEach(async (task) => {
+      const processed = await processImage(task.resultUrl!);
+      if (processed) {
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.taskId === task.taskId ? { ...t, processedUrl: processed } : t
+          )
+        );
+      }
+      setProcessing((prev) => {
+        const next = new Set(prev);
+        next.delete(task.taskId);
+        return next;
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks]);
+
+  const handleDownloadWithText = async (task: GenerationTask) => {
+    if (!task.resultUrl || !overlayText?.trim()) return;
+    setProcessing((prev) => new Set(prev).add(task.taskId + "-text"));
+    const url = await processImage(task.resultUrl, overlayText);
+    setProcessing((prev) => {
+      const next = new Set(prev);
+      next.delete(task.taskId + "-text");
+      return next;
+    });
+    if (url) {
+      window.open(url, "_blank");
+    }
+  };
 
   // Re-poll on tab focus
   useEffect(() => {
@@ -144,7 +214,7 @@ export default function ResultsGallery({ tasks, setTasks }: Props) {
             <div className="aspect-square bg-gray-100 relative flex items-center justify-center">
               {task.status === "completed" && task.resultUrl ? (
                 <img
-                  src={task.resultUrl}
+                  src={task.processedUrl || task.resultUrl}
                   alt={`${getThemeLabel(task.theme)} ${getFormatLabel(task.format)}`}
                   className="w-full h-full object-cover"
                 />
@@ -173,15 +243,28 @@ export default function ResultsGallery({ tasks, setTasks }: Props) {
                 </div>
               </div>
               {task.status === "completed" && task.resultUrl && (
-                <a
-                  href={task.resultUrl}
-                  download
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                >
-                  Скачать
-                </a>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={task.processedUrl || task.resultUrl}
+                    download
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Скачать
+                  </a>
+                  {overlayText?.trim() && (
+                    <button
+                      onClick={() => handleDownloadWithText(task)}
+                      disabled={processing.has(task.taskId + "-text")}
+                      className="text-sm text-purple-600 hover:text-purple-700 font-medium disabled:opacity-50"
+                    >
+                      {processing.has(task.taskId + "-text")
+                        ? "..."
+                        : "+ текст"}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
